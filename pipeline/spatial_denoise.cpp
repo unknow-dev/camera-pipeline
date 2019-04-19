@@ -3,7 +3,7 @@
 #include <complex>
 #include "Halide.h"
 #include "halide_image_io.h"
-#include "denoise.h"
+//#include "denoise.h"
 #include <time.h>
 
 
