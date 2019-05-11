@@ -1,0 +1,8 @@
+optics: optics.cpp
+	g++ optics.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o ./exec/optics -std=c++11 -Wall -Werror
+
+supersample: supersample.cpp
+	g++ supersample.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o ./exec/supersample -std=c++11 -Wall -Werror
+
+chroma: chroma.cpp
+	g++ chroma.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o ./exec/chroma -std=c++11 -Wall -Werror

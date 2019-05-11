@@ -1,0 +1,214 @@
+// TODO
+// include sigma and lambda in the optimization
+// optimize a_i
+// fix supersampling
+
+#include<stdio.h>
+#include<string>
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <math.h>
+#include "clock.h"
+#define R 0
+#define G 1
+#define B 2
+using namespace std;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+using namespace Halide;
+
+int main(int argc, char **argv) {
+
+  Halide::Buffer<uint8_t> in = load_image("../images/inputs/50.jpg");
+  Func in_b = BoundaryConditions::repeat_edge(in);
+  
+  Var x, y, c;
+  Expr sigma = 2.2f; //optimize this parameter
+  Expr lambda = 0.35f; //optimize this parameter
+  Expr gauss = exp(-x*x/(2*sigma*sigma)) / (sqrtf(2*M_PI)*sigma);
+  Expr gauss_0 = 1.0f / (sqrtf(2*M_PI)*sigma);
+  
+  Func g_i;
+  g_i(x, y) = in_b(x, y, G);
+
+  Func h_sharp_inv_k;
+  h_sharp_inv_k(x) = - (lambda * -gauss) + (lambda * lambda * gauss * gauss);
+  h_sharp_inv_k(0) = 1.0f - lambda * (1.0f - gauss_0) + lambda * lambda * (1.0f - gauss_0) * (1.0f - gauss_0);
+  
+
+  Func g_i_y;
+  g_i_y(x, y) = (h_sharp_inv_k(0) * g_i(x, y) +
+		 h_sharp_inv_k(1) * (g_i(x, y-1) + g_i(x, y+1)) +
+		 h_sharp_inv_k(2) * (g_i(x, y-2) + g_i(x, y+2)) +
+		 h_sharp_inv_k(3) * (g_i(x, y-3) + g_i(x, y+3)));
+  
+  Func g_i_;
+  g_i_(x, y) = (h_sharp_inv_k(0) * g_i_y(x, y) +
+		h_sharp_inv_k(1) * (g_i_y(x - 1, y) + g_i_y(x + 1, y)) +
+		h_sharp_inv_k(2) * (g_i_y(x - 2, y) + g_i_y(x + 2, y)) +
+		h_sharp_inv_k(3) * (g_i_y(x - 3, y) + g_i_y(x + 3, y)));
+  
+  Func g_s_;
+  g_s_(x, y) = g_i_(x, y); // supersampling
+  
+  //Buffer<uint8_t> g_s_b = g_s_.realize(0, in.width(), 0, in.height());
+
+  Func r_i;
+  r_i(x, y) = in_b(x, y, R);
+  
+  Func r_i_y;
+  r_i_y(x, y) = (h_sharp_inv_k(0) * r_i(x, y) +
+		 h_sharp_inv_k(1) * (r_i(x, y - 1) + r_i(x, y + 1)) +
+		 h_sharp_inv_k(2) * (r_i(x, y - 2) + r_i(x, y + 2)) +
+		 h_sharp_inv_k(3) * (r_i(x, y - 3) + r_i(x, y + 3)));
+  
+  Func r_i_;
+  r_i_(x, y) = (h_sharp_inv_k(0) * r_i_y(x, y) +
+		h_sharp_inv_k(1) * (r_i_y(x - 1, y) + r_i_y(x + 1, y)) +
+		h_sharp_inv_k(2) * (r_i_y(x - 2, y) + r_i_y(x + 2, y)) +
+		h_sharp_inv_k(3) * (r_i_y(x - 3, y) + r_i_y(x + 3, y)));
+  
+  Func r_s; //apply supersampling
+  RDom img_r(in);
+  r_s(x, y) = f32(0);
+  r_s(3 * img_r.x, 3*img_r.y) = r_i_(img_r.x, img_r.y);
+
+  Func h_inv_ca_rg_k_y;
+  h_inv_ca_rg_k_y(x) = 1;
+
+  Func h_inv_ca_rg_k_x;
+  h_inv_ca_rg_k_x(x) = 1;
+  
+  Func r_s_y;
+  r_s_y(x, y) = u8(h_inv_ca_rg_k_y(0) * r_s(x, y) +
+		   h_inv_ca_rg_k_y(1) * (r_s(x, y - 1) + r_s(x, y + 1)) +
+		   h_inv_ca_rg_k_y(2) * (r_s(x, y - 2) + r_s(x, y + 2)) +
+		   h_inv_ca_rg_k_y(3) * (r_s(x, y - 3) + r_s(x, y + 3)));
+  
+  Func r_s_;
+  r_s_(x, y) = u8(h_inv_ca_rg_k_x(0) * r_s_y(x, y) +
+		 h_inv_ca_rg_k_x(1) * (r_s_y(x - 1, y) + r_s_y(x + 1, y)) +
+		 h_inv_ca_rg_k_x(2) * (r_s_y(x - 2, y) + r_s_y(x + 2, y)) +
+		 h_inv_ca_rg_k_x(3) * (r_s_y(x - 3, y) + r_s_y(x + 3, y)));
+
+  
+  float w_x = 1; //pixel width;
+  float w_y = 1; //pixel height;
+  
+  RDom h_box(-2 / w_x, 3 / w_x, -2 / w_y, 3 / w_y);
+
+  Func r_d_unsamp;
+  r_d_unsamp(x, y) = sum(r_s_(x + h_box.x, y) + r_s_(x, y + h_box.y)) / 25.0f; // box
+
+  Func r_d_;
+  r_d_(x, y) = r_d_unsamp(x/3, y/3); // sample
+  
+  
+  Func h_sharp_k;
+  h_sharp_k(x) = lambda * -gauss;
+  h_sharp_k(0) = 1.0f + lambda * (1.0f - gauss_0);
+  
+
+  Func r_i__y;
+  r_i__y(x, y) = (h_sharp_k(0) * r_d_(x, y) +
+		  h_sharp_k(1) * (r_d_(x, y - 1) + r_d_(x, y + 1)) +
+		  h_sharp_k(2) * (r_d_(x, y - 2) + r_d_(x, y + 2)) +
+		  h_sharp_k(3) * (r_d_(x, y - 3) + r_d_(x, y + 3)));								
+  Func r_i__;
+  r_i__(x, y) = (h_sharp_k(0) * r_i__y(x, y) +
+		 h_sharp_k(1) * (r_i__y(x, y - 1) + r_i__y(x, y + 1)) +
+		 h_sharp_k(2) * (r_i__y(x, y - 2) + r_i__y(x, y + 2)) +
+		 h_sharp_k(3) * (r_i__y(x, y - 3) + r_i__y(x, y + 3))); 
+  
+
+  Func b_i;
+  b_i(x, y) = in_b(x, y, B);
+
+  Func b_i_y;
+  b_i_y(x, y) = (h_sharp_inv_k(0) * b_i(x, y) +
+		 h_sharp_inv_k(1) * (b_i(x, y - 1) + b_i(x, y + 1)) +
+		 h_sharp_inv_k(2) * (b_i(x, y - 2) + b_i(x, y + 2)) +
+		 h_sharp_inv_k(3) * (b_i(x, y - 3) + b_i(x, y + 3)));
+  
+  Func b_i_;
+  b_i_(x, y) = (h_sharp_inv_k(0) * b_i_y(x, y) +
+		h_sharp_inv_k(1) * (b_i_y(x - 1, y) + b_i_y(x + 1, y)) +
+		h_sharp_inv_k(2) * (r_i_y(x - 2, y) + b_i_y(x + 2, y)) +
+		h_sharp_inv_k(3) * (b_i_y(x - 3, y) + b_i_y(x + 3, y)));
+  Func b_s;
+  b_s(x, y) = f32(0);
+  b_s(3 * img_r.x, 3*img_r.y) = b_i_(img_r.x, img_r.y);
+
+  
+  Func h_inv_ca_bg_k_y;
+  h_inv_ca_bg_k_y(x) = 1;
+
+  Func h_inv_ca_bg_k_x;
+  h_inv_ca_bg_k_x(y) = 1;
+ 
+  Func b_s_y;
+  b_s_y(x, y) = u8(h_inv_ca_bg_k_y(0) * b_s(x, y) +
+		 h_inv_ca_bg_k_y(1) * (b_s(x, y - 1) + b_s(x, y + 1)) +
+		 h_inv_ca_bg_k_y(2) * (b_s(x, y - 2) + b_s(x, y + 2)) +
+		 h_inv_ca_bg_k_y(3) * (b_s(x, y - 3) + b_s(x, y + 3)));
+
+  Func b_s_;
+  b_s_(x, y) = u8(h_inv_ca_bg_k_x(0) * b_s_y(x, y) +
+		 h_inv_ca_bg_k_x(1) * (b_s_y(x - 1, y) + b_s_y(x + 1, y)) +
+		 h_inv_ca_bg_k_x(2) * (b_s_y(x - 2, y) + b_s_y(x + 2, y)) +
+		 h_inv_ca_bg_k_x(3) * (b_s_y(x - 3, y) + b_s_y(x + 3, y)));
+
+  Func b_d_unsamp;
+  b_d_unsamp(x, y) = sum(b_s_(x + h_box.x, y) + b_s_(x, y + h_box.y)) / 25.0f;
+
+  Func b_d_;
+  b_d_(x, y) = b_d_unsamp(x/3, y/3); // box and sample
+ 
+  Func b_i__y;
+  b_i__y(x, y) = (h_sharp_k(0) * b_d_(x, y) +
+		  h_sharp_k(1) * (b_d_(x, y-1) +
+				  b_d_(x, y+1)) +
+		  h_sharp_k(2) * (b_d_(x, y-2) +
+				  b_d_(x, y+2)) +
+		  h_sharp_k(3) * (b_d_(x, y-3) +
+				  b_d_(x, y+3)));
+  Func b_i__;
+  b_i__(x, y) = (h_sharp_k(0) * b_i__y(x, y) +
+		  h_sharp_k(1) * (b_i__y(x, y-1) +
+				  b_i__y(x, y+1)) +
+		 h_sharp_k(2) * (b_i__y(x, y-2) +
+				  b_i__y(x, y+2)) +
+		 h_sharp_k(3) * (b_i__y(x, y-3) +
+				  b_i__y(x, y+3))); 
+
+  // RDom r(g_s_b);
+  // Func loss_r;
+  // loss_r() = 0.f;
+  // Expr diff_r = r_s_(r.x, r.y) - g_s_b(r.x, r.y);
+  // loss_r() += diff_r * diff_r;
+
+  // Func loss_b;
+  // loss_b() = 0.f;
+  // Expr diff_b = b_s_(r.x, r.y) - g_s_b(r.x, r.y);
+  // loss_b() += diff_b * diff_b;
+  
+  // auto d_loss_r_d = propagate_adjoints(loss_r);
+  // Func d_loss_r_d_h_inv_ca_rg_k_y = d_loss_r_d(h_inv_ca_rg_k_y);
+  // Func d_loss_r_d_h_inv_ca_rg_k_x = d_loss_r_d(h_inv_ca_rg_k_x);
+  
+  // auto d_loss_b_d = propagate_adjoints(loss_b);
+  // Func d_loss_b_d_h_inv_ca_bg_k_y = d_loss_b_d(h_inv_ca_bg_k_y);
+  // Func d_loss_r_d_h_inv_ca_bg_k_x = d_loss_b_d(h_inv_ca_bg_k_x);
+  
+  Func img;
+  img(x, y, c) = u8(0);
+  img(x, y, R) = u8(r_i__(x, y));
+  img(x, y, G) = u8(g_i(x, y));
+  img(x, y, B) = u8(b_i__(x, y));
+
+  Func r_i__u8;
+  r_i__u8(x, y) = u8(r_i__(x, y));
+  // Buffer<uint8_t> output = r_i__u8.realize(in.width(), in.height());
+  Buffer<uint8_t> output = r_i__u8.realize(in.width(), in.height()); 
+  save_image(output, "../images/outputs/chroma_corrected.jpg");  
+} 

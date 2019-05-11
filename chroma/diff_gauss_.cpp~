@@ -1,0 +1,67 @@
+#include<stdio.h>
+#include<string>
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <math.h>
+#include "clock.h"
+
+#define R 0
+#define G 1
+#define B 2
+
+using namespace std;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+using namespace Halide;
+
+int main(int argc, char **argv) {
+  Halide::Buffer<uint8_t> in = load_image("../images/inputs/2.jpg");
+  float sigma_1 = 0.25f;
+  float sigma_2 = 0.75f;
+  
+  Var x, y, c;
+
+  Func diff_gauss_1_k;
+  diff_gauss_1_k(x) = exp((- x * x) / (2.0f * sigma_1))/(sigma_1 * sqrtf(2 * M_PI));
+  Func diff_gauss_2_k;
+  diff_gauss_2_k(x) = exp((- x * x) / (2.0f * sigma_1))/(sigma_2 * sqrtf(2 * M_PI));
+  
+  Func in_bounded = BoundaryConditions::repeat_edge(in);
+  Func conv1_y;
+  conv1_y(x, y, c) = diff_gauss_1_k(0) * in_bounded(x, y, c) +
+    diff_gauss_1_k(1) * (in_bounded(x, y - 1, c) + in_bounded(x, y + 1, c)) +
+    diff_gauss_1_k(1) * (in_bounded(x, y - 2, c) + in_bounded(x, y + 2, c)) +
+    diff_gauss_1_k(1) * (in_bounded(x, y - 3, c) + in_bounded(x, y + 3, c));
+
+  Func conv1;
+  conv1(x, y, c) = diff_gauss_1_k(0) * in_bounded(x, y, c) +
+    diff_gauss_1_k(1) * (conv1_y(x - 1, y, c) + conv1_y(x + 1, y, c)) +
+    diff_gauss_1_k(1) * (conv1_y(x - 2, y, c) + conv1_y(x + 2, y, c)) +
+    diff_gauss_1_k(1) * (conv1_y(x - 3, y, c) + conv1_y(x + 3, y, c));
+
+  Func conv2_y;
+  conv2_y(x, y, c) = diff_gauss_2_k(0) * in_bounded(x, y, c) +
+    diff_gauss_2_k(1) * (in_bounded(x, y - 1, c) + in_bounded(x, y + 1, c)) +
+    diff_gauss_2_k(1) * (in_bounded(x, y - 2, c) + in_bounded(x, y + 2, c)) +
+    diff_gauss_2_k(1) * (in_bounded(x, y - 3, c) + in_bounded(x, y + 3, c));
+
+  Func conv2;
+  conv2(x, y, c) = diff_gauss_2_k(0) * in_bounded(x, y, c) +
+    diff_gauss_2_k(1) * (conv1_y(x - 1, y, c) + conv1_y(x + 1, y, c)) +
+    diff_gauss_2_k(1) * (conv1_y(x - 2, y, c) + conv1_y(x + 2, y, c)) +
+    diff_gauss_2_k(1) * (conv1_y(x - 3, y, c) + conv1_y(x + 3, y, c));
+
+  
+  Func img;
+  img(x, y, c) = conv1(x, y, c) - conv2(x, y, c);
+  Func img_green;
+  img_green(x, y) =  img(x, y, G);
+  Func img_green_u8;
+  img_green_u8(x, y) = u8(img_green(x, y));
+  
+  double t1 = current_time(); 
+  Buffer<uint8_t> output = img_green_u8.realize(in.width(), in.height());
+  double t2 = current_time();
+  cout<<"Time: "<< t2 - t1 <<endl;
+  save_image(output, "../images/outputs/2_diff_gauss_green.jpg");   
+} 

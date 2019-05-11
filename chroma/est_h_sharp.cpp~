@@ -1,0 +1,51 @@
+#include<stdio.h>
+#include<string>
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <math.h>
+#include "clock.h"
+#define R 0
+#define G 1
+#define B 2
+using namespace std;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+using namespace Halide;
+
+int main(int argc, char **argv) {
+  Halide::Buffer<uint8_t> in = load_image("../images/inputs/lena.jpg");
+
+  Expr xi = 9;
+  Expr e = 2;
+  Func in_b = BoundaryConditions::repeat_edge(in);
+  Expr lamda = 1;
+  Expr sigma  = 1;
+
+
+  RDom left(-11, -2);
+  RDom right(3, 12);
+  Var x, y;
+  Func sum_left;
+  sum_left(x, y) = sum(in_b(x + left, y));
+
+  Func sum_right;
+  sum_right(x, y) = sum(in_b(x + right, y));
+  Func mean_left;
+  mean_left(x, y) = sum_left(x, y) / 9.0f;
+  Func mean_right;
+  mean_right(x, y) = sum_right(x, y) / 9.0f;
+
+  Func sigma_left;
+  sigma_left(x, y) = sqrt(sum(pow(in_b(x + left, y) - mean_left(x, y), 2)) / 9.0f);
+  
+  Func sigma_right;
+  sigma_right(x, y) = sqrt(sum(pow(in_b(x + right, y) - mean_right(x, y), 2)) / 9.0f);
+
+  Func E_ring; //E_ring is the loss function that we are minimizing
+  E_ring(x, y) = (sigma_left(x, y) + sigma_right(x, y)) / abs(mean_left(x, y) - mean_right(x, y));
+
+  // auto d_E_ring_d = Halide::propagate_adjoints(E_ring);
+  // Func d_E_ring_lambda = d_E_ring_d(lambda); //this lambda is in optics.cpp
+  // Func d_E_ring_sigma = d_E_ring_d(sigma);
+    
+} 

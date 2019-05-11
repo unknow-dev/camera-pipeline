@@ -1,0 +1,66 @@
+// TODO
+//fix the clamp bug
+//optimize p_1D_f (v. slow), b (slow) and p_1D_b (v. v. slow)
+
+//ss_conv.cpp performs the supersampling convolution. 
+#include<stdio.h>
+#include<string>
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <math.h>
+#include "clock.h"
+using namespace std;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+using namespace Halide;
+int main(int argc, char **argv) {
+  Halide::Buffer<uint8_t> in = load_image("./images/inputs/1.jpg");
+  Var x, y, c;
+ 
+  Expr clamped_x = clamp(x, 5, in.width() - 5);
+  Expr clamped_y = clamp(y, 5, in.height() - 5);
+
+  Var t, temp;
+  Expr t_w = t * 0.33f;
+  Expr n_one_term = -t_w + 2 * pow(t_w, 2);
+  Expr zero_term = 2 - 5 * pow(t_w, 2) + 3 * pow(t_w, 3);
+  Expr one_term = t_w + 4 * pow(t_w, 2) - 3 * pow(t_w, 3);
+  Expr two_term = -pow(t_w, 2) + pow(t_w, 3);
+  RDom i(0, 4);
+
+  Func p_1D_f;
+  p_1D_f(x, y, c, t, temp) = f32(0);
+  p_1D_f(x, y, c, t, i) = (f(x, y, c, 0, i) * n_one_term + f(x, y, c, 1, i) * zero_term + f(x, y, c, 2, i) * one_term + f(x, y, c, 3, i) * two_term) / 2.0f;
+  p_1D_f.trace_stores();
+  p_1D_f.print_loop_nest();
+  
+  RDom b_r(0, in.width(), 0, 3, 0, 4);
+
+  Func b;
+  b(x, y, c, temp) = f32(0);
+  b(3 * b_r.x + b_r.y, y, c, b_r.z) = p_1D_f(3 * b_r.x, y, c, b_r.y, b_r.z);
+  b.trace_stores();
+  //b.print_loop_nest();
+
+  Func p_1D_b;
+  p_1D_b(x, y, c, t) = (b(x, y, c, 0) * n_one_term + b(x, y, c, 1) * zero_term + b(x, y, c, 2) * one_term + b(x, y, c, 3) * two_term) / 2.0f;
+  p_1D_b.trace_stores();
+  //p_1D_b.print_loop_nest();
+
+  RDom p_r(0, in.height() - 5, 0, 3);
+
+  Func p;
+  p(x, y, c) = f32(0);
+  p(clamped_x, 3 * p_r.x, c) = p_1D_b(x, 3 * p_r.x, c, 0);
+  p(clamped_x, 3 * p_r.x + 1, c) = p_1D_b(x, 3 * p_r.x + 1, c, 1);
+  p(clamped_x, 3 * p_r.x + 2, c) = p_1D_b(x, 3 * p_r.x + 2, c, 2);
+  //p.trace_stores();
+  p.print_loop_nest();
+  double t1 = current_time(); 
+  Buffer<uint8_t> output = p.realize(3 * in.width(), 3 * in.height(), in.channels());
+  //p_1D_f.realize(3 * in.width(), 3 * in.height(), in.channels(), 4);
+
+  double t2 = current_time();
+  cout<<"Time: "<< t2 - t1 <<endl;
+  //save_image(output, "./images/outputs/supersampled.jpg");
+} 
