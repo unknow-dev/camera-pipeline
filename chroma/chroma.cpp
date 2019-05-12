@@ -19,7 +19,7 @@ using namespace Halide;
 
 int main(int argc, char **argv) {
 
-  Halide::Buffer<uint8_t> in = load_image("../images/chroma_test/in.jpg");
+  Halide::Buffer<uint8_t> in = load_image("../images/chroma_test/in256.jpg");
   Func m_i = BoundaryConditions::repeat_edge(in);
   
   Var x, y, c;
@@ -76,6 +76,7 @@ int main(int argc, char **argv) {
   // Buffer<uint8_t> m_s_b = m_s.realize(3 * in.width(), 3 * in.height(), in.channels());
   //m_s.trace_stores();
   m_s.compute_root();
+
   Func h_inv_ca_rg_k_y;
   h_inv_ca_rg_k_y(x) = 100;
 
@@ -89,11 +90,11 @@ int main(int argc, char **argv) {
   		   h_inv_ca_rg_k_y(3) * (m_s(x, y - 3, R) + m_s(x, y + 3, R)));
   
   Func r_s_;
-  // r_s_(x, y) = u8(h_inv_ca_rg_k_x(0) * r_s_y(x, y) +
-  // 		 h_inv_ca_rg_k_x(1) * (r_s_y(x - 1, y) + r_s_y(x + 1, y)) +
-  // 		 h_inv_ca_rg_k_x(2) * (r_s_y(x - 2, y) + r_s_y(x + 2, y)) +
-  // 		 h_inv_ca_rg_k_x(3) * (r_s_y(x - 3, y) + r_s_y(x + 3, y)));
-  r_s_(x, y) = m_s(x, y, R);
+  r_s_(x, y) = u8(h_inv_ca_rg_k_x(0) * r_s_y(x, y) +
+  		 h_inv_ca_rg_k_x(1) * (r_s_y(x - 1, y) + r_s_y(x + 1, y)) +
+  		 h_inv_ca_rg_k_x(2) * (r_s_y(x - 2, y) + r_s_y(x + 2, y)) +
+  		 h_inv_ca_rg_k_x(3) * (r_s_y(x - 3, y) + r_s_y(x + 3, y)));
+  //r_s_(x, y) = m_s(x, y, R);
   //r_s_.trace_stores();
   float w_x = 1; //pixel width;
   float w_y = 1; //pixel height;
@@ -180,20 +181,20 @@ int main(int argc, char **argv) {
   // img(x, y, B) = u8(b_i__(x, y));
 
   // Auto Diff
-  // RDom r(g_s_b);
-  // Func loss_r;
-  // loss_r() = 0.f;
-  // Expr diff_r = r_s_(r.x, r.y) - g_s_b(r.x, r.y);
-  // loss_r() += diff_r * diff_r;
+  RDom r(in);
+  Func loss_r;
+  loss_r() = 0.f;
+  Expr diff_r = r_s_(r.x, r.y) - m_s(r.x, r.y, G);
+  loss_r() += diff_r * diff_r;
 
   // Func loss_b;
   // loss_b() = 0.f;
   // Expr diff_b = b_s_(r.x, r.y) - g_s_b(r.x, r.y);
   // loss_b() += diff_b * diff_b;
   
-  // auto d_loss_r_d = propagate_adjoints(loss_r);
-  // Func d_loss_r_d_h_inv_ca_rg_k_y = d_loss_r_d(h_inv_ca_rg_k_y);
-  // Func d_loss_r_d_h_inv_ca_rg_k_x = d_loss_r_d(h_inv_ca_rg_k_x);
+  auto d_loss_r_d = propagate_adjoints(loss_r);
+  Func d_loss_r_d_h_inv_ca_rg_k_y = d_loss_r_d(h_inv_ca_rg_k_y);
+  Func d_loss_r_d_h_inv_ca_rg_k_x = d_loss_r_d(h_inv_ca_rg_k_x);
   
   // auto d_loss_b_d = propagate_adjoints(loss_b);
   // Func d_loss_b_d_h_inv_ca_bg_k_y = d_loss_b_d(h_inv_ca_bg_k_y);
