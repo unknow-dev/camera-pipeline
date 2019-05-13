@@ -5,7 +5,7 @@ tools
 pipeline/figures
 pipeline/frames
 pipeline/images
-pipeline/executables
+pipeline/exec
 pipeline/ssd.h
 pipeline/ssd.cpp
 opencv_contrib

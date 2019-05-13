@@ -11,4 +11,8 @@ pipeline: pipeline.cpp main.cpp
 
 
 spatial: spatial_denoise.cpp
-	g++ spatial_denoise.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o executables/spatial_denoise -std=c++11 -Wall -Werror
+	g++ spatial_denoise.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o exec/spatial -std=c++11 -Wall -Werror
+
+
+spatial_bw: spatial_denoise_bw.cpp
+	g++ spatial_denoise_bw.cpp -g -I ../include -I ../tools -L ../bin -lHalide `libpng-config --cflags --ldflags` -ljpeg -lpthread -ldl -o exec/spatial_bw -std=c++11 -Wall -Werror
