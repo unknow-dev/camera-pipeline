@@ -32,9 +32,9 @@ DYLD_LIBRARY_PATH=../bin ./demosaic2 raw02.png
 */
 
 int main(int argc, char **argv){
-	Buffer<uint8_t> input0 = load_image("images/" + string(argv[1]));
+	Buffer<uint8_t> input0 = load_image("../images/demosaic_test/1.jpg" + string(argv[1]));
 
-	float max = -1, mag, max_r, max_g, max_b;
+	//	float max = -1, mag, max_r, max_g, max_b;
 
 	Var x("x"), y("y"), c("c");
 

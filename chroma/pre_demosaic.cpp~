@@ -1,0 +1,35 @@
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <math.h>
+#include "clock.h"
+#define R 0
+#define G 1
+#define B 2
+using namespace std;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+using namespace Halide;
+
+int main(int argc, char **argv) {
+
+  Buffer<uint8_t> mono8 = load_image("../images/demosaic_test/1.jpg");
+  // R G
+  // G B
+  Var x, y, c;
+  Func bayer;
+  bayer(x, y, c) = u8(0);
+  RDom red(mono8);
+  red.where(red.x % 2 == 0 && red.y % 2 == 0);
+  RDom blue(mono8);
+  blue.where(blue.x % 2 == 1 && blue.y % 2 == 1);
+  RDom green(mono8);
+  green.where((green.x + green.y) % 2 == 1);
+  
+  bayer(red.x, red.y, R) = mono8(red.x, red.y);
+  bayer(green.x, green.y, G) = mono8(green.x, green.y);
+  bayer(blue.x, blue.y, B) = mono8(blue.x, blue.y);
+
+  bayer.trace_stores();
+  Buffer<uint8_t> output = bayer.realize(mono8.width(), mono8.height(), 3);
+  save_image(output, "../images/demosaic_test/1out.jpg");
+}

@@ -1,0 +1,28 @@
+#include <stdio.h>
+#include <math.h>
+#include <complex>
+#include "Halide.h"
+#include "halide_image_io.h"
+//#include "denoise.h"
+#include <time.h>
+#define R 0
+#define G 1
+#define B 2
+
+
+using namespace Halide;
+using namespace Halide::ConciseCasts;
+using namespace std;
+
+
+int main(int argc, char **argv) {
+  Buffer<uint8_t> in_b = Tools::load_image("../images/noise_test/in_n220.jpg");
+  Func in = BoundaryConditions::repeat_edge(in_b);
+
+  RDom r(-5, 6, -5, 6);
+
+  Func box;
+  box(x, y) = f32(0);
+  box(x, y) = sum(in(x + r.x, x + r.y) / 100.f);
+  
+}

@@ -13,7 +13,7 @@ using namespace Halide::Tools;
 using namespace Halide::ConciseCasts;
 using namespace Halide;
 int main(int argc, char **argv) {
-  Halide::Buffer<uint8_t> in = load_image("../images/inputs/256.jpg");
+  Halide::Buffer<uint8_t> in = load_image("../images/supersample_test/in256.jpg");
 
   Var x, y, c;
   
@@ -49,12 +49,11 @@ int main(int argc, char **argv) {
   Expr t_2_y = -pow(t_y_w, 2) + pow(t_y_w, 3);
   
   Func p;
-  p(x, y, c) = u8((b(x/3, y, c, -1) * t_n_1_y + b(x/3, y, c, 0) * t_0_y + b(x/3, y, c, 1) * t_1_y + b(x/3, y, c, 2) * t_2_y) / 2.0f);
-
+  p(x, y, c) = u8(min((b(x/3, y, c, -1) * t_n_1_y + b(x/3, y, c, 0) * t_0_y + b(x/3, y, c, 1) * t_1_y + b(x/3, y, c, 2) * t_2_y) / 2.0f, 255));
   double t1 = current_time(); 
   Buffer<uint8_t> output = p.realize(3 * in.width(), 3 * in.height(), in.channels());
-
+  
   double t2 = current_time();
   cout<<"Time: "<< t2 - t1 <<endl;
-  save_image(output, "../images/outputs/supersampled.jpg");
+  save_image(output, "../images/supersample_test/out256.jpg");
 } 
