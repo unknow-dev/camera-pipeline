@@ -1,0 +1,73 @@
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <stdio.h>
+#include "opt_flow.h"
+
+using namespace Halide;
+using namespace Halide::Tools;
+
+Buffer<double> u_new_buff;
+Buffer<double> v_new_buff;
+Buffer<double> u_buff;
+Buffer<double> v_buff;
+int height;
+int width;
+int t;
+
+bool converge() {
+  double diff_x, diff_y;
+  for (int x = 0; x < width; x++) {
+    for (int y = 0; x < height; y++) {
+      diff_x = v_new_buff(x, y, t) - v_buff(x, y, t);
+      diff_y = u_new_buff(x, y, t) - u_buff(x, y, t);
+    }
+  }
+  if (diff_x < threshold && diff_y < threshold) return true;
+  return false;
+}
+
+int main(int argc, char **argv) {
+
+  Buffer<uint_8> img0 = load_image("images/0.png");
+  Buffer<uint_8> img1 = load_image("images/1.png");
+  
+  Func fx;
+  fx(x, y, t) = 0;
+  fx(x, y, 0) = (img0(x - 3, y) + img0(x - 2, y) * -9 + img0(x - 1, y) * 45 + img0(x + 1, y) * -45 + img0(x + 2, y) * 9 + img0(x + 3, y) * -1) / (60 * img0.width());
+
+  fx(x, y, 1) = (img1(x - 3, y) + img1(x - 2, y) * -9 + img1(x - 1, y) * 45 + img1(x + 1, y) * -45 + img1(x + 2, y) * 9 + img1(x + 3, y) * -1) / (60 * img1.width());
+
+
+  
+  Func fy;
+  fy(x, y, t) = 0;
+  fy(x, y, 0) = (img0(x, y - 3) + img0(x, y - 2) * -9 + img0(x, y - 1) * 45 + img0(x, y + 1) * -45 + img0(x, y + 2) * 9 + img0(x, y + 3) * -1) / (60 * img0.height());
+
+  fy(x, y, 1) = (img1(x, y - 3) + img1(x, y - 2) * -9 + img1(x, y - 1) * 45 + img1(x, y + 1) * -45 + img1(x, y + 2) * 9 + img1(x, y + 3) * -1) / (60 * img1.height());
+
+  Halide::Runtime::Buffer<double> u_prev_f(img.width(), img.height());
+
+  Halide::Runtime::Buffer<double> prev_u(img.width(), img.height());
+  
+  Halide::Runtime::Buffer<double> prev_v(img.width(), img.height());
+  
+  int convergence = 10;
+  int n = 5; // we converge in chunks of n 
+
+  Halide::Runtime::Buffer<double> u(img.width(), img.height())[n + 2];
+  Halide::Runtime::Buffer<double> v(img.width(), img.height())[n + 2];
+
+  int err = opt_flow();
+  for (int f = 0; f < num_frames; f += n) {
+    for (int c = 0; c < convergence; c++) { // for now convergence happens at a constant rate
+      u[0] = prev_u;
+      v[0] = prev_v;
+      // fill u/v[n+1] with zeroslk
+      for (int i = 1; i < n; i++) {
+	opt_flow( u[i + 1], v[i + 1], u[i], v[i]);
+      }
+    }
+    prev_u = u[n];
+    prev_v = v[n];
+  }
+}

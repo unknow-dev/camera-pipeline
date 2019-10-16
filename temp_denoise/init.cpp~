@@ -1,0 +1,28 @@
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <stdio.h>
+#include "clock.h"
+#include <vector>
+using namespace Halide;
+using namespace Halide::Tools;
+using namespace Halide::ConciseCasts;
+
+
+int main(int argc, char **argv) {
+  ImageParam frame[2H + 1];
+  for (int i = 0; i < 2H + 1; i++) {
+    ImageParam p(type_of<uint8_t> (), 2);
+    frame[i] = p;
+  }
+  int W = frame[0].width();
+  int H = frame[0].height();
+
+  std::vector<std::vector<double>> offsets[H][W];
+  
+  for (int i = 0; i < 2H + 1; i++) { // for all frames
+    // vector of (x, y, d)'s
+    offsets[y][x] = heapify(random_offsets(x, y));
+    
+  }
+  
+}

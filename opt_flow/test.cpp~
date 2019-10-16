@@ -1,0 +1,13 @@
+#include <stdio.h>
+#include "Halide.h"
+
+int main(int argc, char **argv) {
+  // test 1d example
+  Var x;
+  Func c;
+  v(x) = 0;
+  v(0) = 1;
+  v(x) = v(x - 1);
+  v.realize(20); v.trace_stores();
+}
+

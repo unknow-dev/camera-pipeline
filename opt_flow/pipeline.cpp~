@@ -1,0 +1,80 @@
+// g++ pipeline.cpp -g -I ../../include -L ../../bin -lHalide -o pipeline -std=c++11
+// DYLD_LIBRARY_PATH=../bin ./pipeline
+
+#include "Halide.h"
+#include "halide_image_io.h"
+#include <stdio.h>
+using namespace Halide;
+using namespace Halide::Tools;
+
+int height;
+int width;
+int t0;
+
+int main(int argc, char **argv) {
+
+  ImageParam img0(type_of<uint8_t>(), 2);
+  ImageParam img1(type_of<uint8_t>(), 2);
+
+  ImageParam prev_u(type_of<double>(), 2);
+  ImageParam prev_v(type_of<double>(), 2);
+  
+  ImageParam next_u(type_of<double>(), 2);
+  ImageParam next_v(type_of<double>(), 2);
+
+  ImageParam u(type_of<double>(), 2);
+  ImageParam v(type_of<double>(), 2);
+
+  Var x, y, t;
+  Func fx;
+
+  fx(x, y) = (img1(x - 3, y) + img1(x - 2, y) * -9 + img1(x - 1, y) * 45 + img1(x + 1, y) * -45 + img1(x + 2, y) * 9 + img1(x + 3, y) * -1) / (60 * img1.width());
+
+  Func fy;
+  fy(x, y) = (img1(x, y - 3) + img1(x, y - 2) * -9 + img1(x, y - 1) * 45 + img1(x, y + 1) * -45 + img1(x, y + 2) * 9 + img1(x, y + 3) * -1) / (60 * img1.height());
+
+  Func ft;
+  ft(x, y) = img1(x, y) - img0(x, y);
+
+  Func J[3][3];
+  J[0][0](x, y) = pow(fx(x, y), 2);
+  J[0][1](x, y) = fx(x, y) * fy(x, y);
+  J[0][2](x, y) = fx(x, y) * ft(x, y);
+  J[1][0](x, y) = fx(x, y) * fy(x, y);
+  J[1][1](x, y) = pow(fy(x, y), 2);
+  J[1][2](x, y) = fy(x, y) * ft(x, y);
+  J[2][0](x, y) = fx(x, y) * ft(x, y);
+  J[2][1](x, y) = fx(x, y) * ft(x, y);
+  J[2][2](x, y) = pow(ft(x, y), 2);
+
+  Expr omega = 1.9f;
+  
+  Func u_new;
+  u_new(x, y) = 0;
+  Func v_new;
+  v_new(x, y) = 0;
+  
+  // role of alpha from pg 215
+  // the smoothness weight α > 0 serves as regularisation parameter: Larger values for α result in a stronger penalisation of large flow gradients and lead to smoother flow fields.
+  Expr alpha = 100000.0f;
+  // update
+  
+  Expr u_neg_sum = u_new(x - 1, y) + u_new(x, y - 1) + prev_u(x, y); // prev frame and prev pixels
+  Expr u_pos_sum = u(x + 1, y) + u(x, y + 1) + next_u(x, y); // next frame and next pixels
+
+  // test 1d example: v(x) = 0; v(0) = 1; v(x) = v(x - 1); v.realize(20); v.trace_stores();
+  Expr W = img0.width();
+  Expr H = img0.height();
+  u_new(x, y) = (1 - omega) * u(x, y) + omega * (u_neg_sum + u_pos_sum - (W * H / alpha) * (J[0][1](x, y) * v(x, y) + J[0][2](x, y))) / (6 + H * W / alpha * J[0][0](x, y)); // 6 because there are 6 neighboring values that we are computing the new value
+
+  
+  Expr v_neg_sum = v_new(x - 1, y) + v_new(x, y - 1) + prev_v(x, y); // prev frame and prev pixels
+  Expr v_pos_sum = v(x + 1, y) + v(x, y + 1) + next_v(x, y); // next frame and next pixels
+
+  v_new(x, y) = (1 - omega) * v(x, y) + omega * (v_neg_sum + v_pos_sum - (W * H / alpha) * (J[1][0](x, y) * u_new(x, y) + J[1][2](x, y))) / (6 + (W * H) / 6 * J[1][1](x, y));
+
+  u_new.compile_to_static_library("pipeline", {img0, img1, prev_u, next_u, u, v}, "u_new");
+  v_new.compile_to_static_library("pipeline", {img0, img1, prev_v, next_v, u, v}, "v_new");
+  
+}
+
